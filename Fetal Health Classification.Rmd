@@ -1,0 +1,355 @@
+---
+title: "Fetal Health Classification"
+author: "Shraddha Ramesh"
+date: "6/2/2021"
+output: html_document
+---
+
+### Library
+```{r}
+if (!require(pacman)) intall.package("pacman")
+
+p_load(pacman,
+       tidyverse,
+       caret,
+       magrittr,
+       class, #knn
+       ggrepel,
+       kernlab, #svm
+       nnet,
+       C50, #decision trees
+       randomForest,
+       gmodels,
+       usemodels, # use_xgboost
+       psych, #pca
+       xgboost,
+       patchwork,
+       naniar) #for missing data analysis
+
+theme_set(theme_minimal())
+```
+
+
+### Load data
+```{r}
+fhd_org <- read_csv("Data/fetal_health.csv")
+
+fhd <- read_csv("Data/fetal_health.csv")
+
+str(fhd)
+
+# Check the proportion of data for each of the 3 different fetal classification type
+fhd %>% 
+    group_by(fetal_health) %>%
+    summarise(n=n(),prop=round(n/nrow(fhd)*100,2)) 
+
+fhd %>% colnames()
+
+#change column names to shorter names using assignment pipe
+fhd %<>% rename(baselineValue=`baseline value`,
+                uterineContract=uterine_contractions,
+                lightDeceler=light_decelerations,
+                severeDeceler=severe_decelerations,
+                prolongDeceler=prolongued_decelerations,
+               abnormShortVar=abnormal_short_term_variability,
+               meanShortVar=mean_value_of_short_term_variability,
+               PercAbnorLongVar=percentage_of_time_with_abnormal_long_term_variability,
+               meanLongVar=mean_value_of_long_term_variability,
+               histNumPeaks=histogram_number_of_peaks,
+               histNumZero=histogram_number_of_zeroes,
+               histWidth=histogram_width,
+               histMin=histogram_min,
+               histMax=histogram_max,
+               histMean=histogram_mean,
+               histMedian=histogram_median,
+               histMode=histogram_mode,
+               histVar=histogram_variance,
+               histTendency=histogram_tendency)
+
+fhd %>% colnames()
+
+# Check if any missing value
+fhd %>% 
+    gg_miss_var()
+    
+```
+
+### Split into test and train sets
+```{r}
+set.seed(100)
+
+train_set = sample(1:nrow(fhd), size=floor(0.7*nrow(fhd))) #70% of the data is kept as training set
+
+## Separating the label and feature data
+train= fhd[train_set,-22]
+train_label=fhd[train_set,22]
+
+test= fhd[-train_set,-22]
+test_label= fhd[-train_set,22]
+
+```
+
+```{r}
+
+
+```
+
+### Data Preprocessing
+1.fetal_health: Set this to Factor (Originally-> 1:Normal, 2:Suspect, 3:Pathological) <br>
+2. Normalize the data set
+3. No categorical features
+
+```{r}
+train_label %<>% #assignment pipe
+    mutate(fetal_health=as.factor(fetal_health))
+
+test_label %<>% #assignment pipe
+    mutate(fetal_health=as.factor(fetal_health))
+
+
+# Check proportions of target in train and test
+rbind(table(train_label) 
+      %>% prop.table(), 
+      
+      table(test_label) 
+      %>% prop.table())
+
+
+# cbind(train,train_label) %>% 
+#     group_by(fetal_health) %>%
+#     summarise(n=n(),prop=round(n/nrow(train)*100,2)) %>% 
+#     ggplot(aes(x=fetal_health,y=prop,label=prop)) +
+#     geom_bar(stat="identity")+
+#     geom_text_repel(hjust = 0.5,direction='y',nudge_y = 1.5)+
+#     ylim(0, 85)+
+#     labs(y="Proportion",x=" Fetal health")
+```
+
+### Distribution of variables in train data faceted by fetal health
+```{r}
+
+cbind(train,train_label) %>% 
+    gather("Variable","Value", baselineValue:histTendency) %>% 
+    ggplot(aes(y=Value,color=fetal_health))+
+    facet_wrap(~Variable,scales="free_y",
+               nrow = 5,
+               strip.position = "top")+
+    geom_boxplot()+
+    scale_color_manual(values=c("#999999", "#E69F00", "#56B4E9"))+
+    theme(legend.position = "bottom",
+          plot.margin = unit(c(6.5, 6.5, 6.5, 6.5), "points"),
+          axis.text.y = element_text(size = 7),
+          strip.background = element_blank(), 
+          strip.placement = "outside")+
+    labs(color="Fetal Health")
+```
+
+```{r}
+
+g1 <- train %>% 
+    gather("Variable","Value", baselineValue:histTendency) %>% 
+    ggplot(aes(y=Variable,x=Value,color=Variable))+
+    geom_boxplot()+
+    geom_jitter(alpha=0.01)+
+    theme(legend.position = "none") +
+    labs(title = "Distribuition in train data")+ theme(aspect.ratio = 1.2)
+
+g2 <- test %>% 
+    gather("Variable","Value", baselineValue:histTendency) %>% 
+    ggplot(aes(y=Variable,x=Value,color=Variable))+
+    geom_boxplot()+
+    geom_jitter(alpha=0.01)+
+    theme(legend.position = "none")+
+    labs(title = "Distribuition in test data")+ theme(aspect.ratio = 1.2)
+
+g1|g2 #using patchwork package
+
+```
+
+### Normalize the numerical data set
+```{r}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+#normalize the train and test data sets
+train1 <- as.data.frame(lapply(train, normalize))
+test1 <- as.data.frame(lapply(test, normalize))
+
+```
+
+
+
+```{r}
+# # find the mean values of all variables segregated by fetal health status
+# fhd %>% 
+#     group_by(fetal_health) %>% 
+#     summarise_all(funs(mean(., na.rm=TRUE)))
+```
+
+
+
+
+
+
+For some of the variables we see that there is clear distinction between Normal,Suspect and pathological fetal health status.
+
+
+
+
+
+### KNN Model
+```{r}
+knn_pred1 <- knn(train = train1, test = test1,
+                      cl = train_label$fetal_health, k=21)
+confusionMatrix(as.factor(test_label$fetal_health),knn_pred1,positive ="3")##accuracy:0.8824 
+
+#Increasing the num neighbors
+knn_pred2 <- knn(train = train1, test = test1,
+                      cl = train_label$fetal_health, k=49)
+confusionMatrix(as.factor(test_label$fetal_health),knn_pred2,positive = "3")
+## accuracy: 0.8746
+
+#Decreasing the num neighbors
+knn_pred3 <- knn(train = train1, test = test1,
+                      cl = train_label$fetal_health, k=5)
+cm2 <- confusionMatrix(as.factor(test_label$fetal_health),knn_pred3)
+#Accuracy : 0.8981191 
+cm2[["byClass"]][,c('F1',"Recall","Precision")]
+
+knn_pred4 <- knn(train = train1, test = test1,
+                      cl = train_label$fetal_health, k=3)
+knn_cm <- confusionMatrix(as.factor(test_label$fetal_health),knn_pred4) ##accuracy: 0.8997
+knn_cm$overall[1]
+knn_cm[["byClass"]][,c('F1',"Recall","Precision")]
+
+```
+
+
+### SVM Model: Vanilla dot and rbf dot
+```{r}
+svm_model1 <- ksvm(fetal_health ~ ., data = cbind(train1,
+                                        fetal_health= train_label$fetal_health),
+                          kernel = "vanilladot",cross=5)
+
+svm_pred1 <- predict(svm_model1 , cbind(test1,fetal_health=test_label$fetal_health))
+
+cm3<-confusionMatrix(test_label$fetal_health,svm_pred1) #Accuracy : 0.8714734
+cm3$overall[1]
+cm3[["byClass"]][,c('F1',"Recall","Precision")]
+
+svm_model2 <- ksvm(fetal_health ~ ., data = cbind(train1,
+                                        fetal_health= train_label$fetal_health),,
+                          kernel = "rbfdot",kpar=list(sigma=0.1),cross=5)
+
+svm_pred2 <- predict(svm_model2 , cbind(test1,fetal_health=test_label$fetal_health))
+
+cm4<-confusionMatrix(test_label$fetal_health,svm_pred2)#Accuracy : 0.8840125 
+cm4$overall[1]
+cm4[["byClass"]][,c('F1',"Recall","Precision")]
+```
+
+
+### Decision Trees
+```{r}
+
+dt1<-C5.0(train1,train_label$fetal_health)
+dt_pred<-predict(dt1,test1)
+dt_cm<-confusionMatrix(as.factor(dt_pred),test_label$fetal_health) #Accuracy : 0.862069
+dt_cm$overall[1]
+dt_cm[["byClass"]][,c('F1',"Recall","Precision")]
+#plot(dt1)
+
+# Rule- Based Models with 80 trials
+dt2<-C5.0(train1,train_label$fetal_health,rules = TRUE,trials = 80)
+dt_pred2<-predict(dt2,test1)
+dt_cm2<-confusionMatrix(as.factor(dt_pred2),test_label$fetal_health) 
+dt_cm2$overall[1] #accuracy: 0.9263323 
+dt_cm2[["byClass"]][,c('F1',"Recall","Precision")]
+```
+
+### Boosted Decision trees with trials=80
+```{r}
+dt3<-C5.0(train1,train_label$fetal_health,trials = 80)
+dt_pred3<-predict(dt3,test1)
+
+dt_cm3<-confusionMatrix(as.factor(dt_pred3),test_label$fetal_health) 
+dt_cm3$overall[1] #accuracy: 0.9200627
+dt_cm3[["byClass"]][,c('F1',"Recall","Precision")]
+
+```
+
+### Boosted Decision tree with cost matrix
+```{r}
+error_cost<-matrix(c(0,1,3,1,0,3,3,3,0),nrow=3)
+error_cost
+# rownames(error_cost)<-colnames(error_cost) <- c("Normal","Suspect","Pathological")
+# error_cost
+
+# Decision tree model with 30 trials and error cost
+dt4<-C5.0(train1,train_label$fetal_health,trials = 80,costs = error_cost)
+dt_pred4<-predict(dt4,test1)
+dt_cm4<-confusionMatrix(dt_pred4,test_label$fetal_health)
+dt_cm4$overall[1]#Accuracy : 0.92789
+dt_cm4[["byClass"]][,c('F1',"Recall","Precision")] 
+```
+
+
+### Evaluateing the metrics
+
+```{r}
+df_knn <- as.tibble(cm4[["byClass"]][,c('F1',"Recall","Precision")])
+df_knn %<>% 
+  mutate(class=seq(1:3),
+         model="KNN rbfdot")
+
+df_dt2 <- as.tibble(dt_cm2[["byClass"]][,c('F1',"Recall","Precision")])
+df_dt2 %<>% 
+  mutate(class=seq(1:3),
+        model="DT with rules")
+
+df_dt4 <- as.tibble(dt_cm4[["byClass"]][,c('F1',"Recall","Precision")])
+df_dt4 %<>% 
+  mutate(class=seq(1:3),
+        model="DT with cost")
+
+
+findalMetric <- rbind(df_knn,df_dt2,df_dt4)
+
+findalMetric 
+```
+
+
+### Random Forests
+```{r}
+
+# rf1<-randomForest(fhd_n[train_set,22]~.,data=fhd_n[train_set,-22])
+# rf_pred1<-predict(rf1,fhd_test)
+# cm8<-confusionMatrix(rf_pred1,reference=test_label)
+# cm8[["byClass"]][,c('F1',"Recall","Precision","Balanced Accuracy")]
+
+```
+
+### PCA
+```{r}
+# ## Understanding PCA
+# dim(fhd)
+# 
+# fhd %>% 
+#   select(1:21) %>% 
+#   nfactors(n=5)
+# 
+# pc1<-fhd_n[,-22] %>% principal(nfactors = 2)
+# pc1$loadings
+# 
+# 
+# pc2<-prcomp(fhd[,-22])
+# summary(pc2) # 58% of variance is explained by PC1 and by PC8 we have about 99% of teh data spread
+# 
+# #to visualize the new projected axis and the data for the first two components
+# proj<-as.data.frame(pc2$x)
+# 
+# ggplot(proj)+geom_point(aes(x=proj[,1],y=proj[,2],color=fhd_n$fetal_health))
+# ggplot(proj)+geom_point(aes(x=proj[,1],y=proj[,2],color=fhd_n$fetal_health),alpha=0.2)
+```
+
