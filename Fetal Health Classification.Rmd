@@ -143,7 +143,9 @@ cbind(train,train_label) %>%
           strip.placement = "outside")+
     labs(color="Fetal Health")
 ```
+For some of the variables we see that there is clear distinction between Normal,Suspect and pathological fetal health status.
 
+### Distribution of features in test and train data set
 ```{r}
 
 g1 <- train %>% 
@@ -192,7 +194,7 @@ test1 <- as.data.frame(lapply(test, normalize))
 
 
 
-For some of the variables we see that there is clear distinction between Normal,Suspect and pathological fetal health status.
+
 
 
 
@@ -295,6 +297,24 @@ dt_cm4[["byClass"]][,c('F1',"Recall","Precision")]
 ```
 
 
+
+
+
+### Random Forests
+```{r}
+
+rf1<-randomForest(fetal_health~.,
+                  data=cbind(train1,fetal_health=train_label$fetal_health))
+
+rf_pred1<-predict(rf1,test1)
+rf_cm<-confusionMatrix(rf_pred1,test_label$fetal_health)
+rf_cm$overall[1] #0.9200627
+
+rf_cm[["byClass"]][,c('F1',"Recall","Precision","Balanced Accuracy")]
+rf1
+
+```
+
 ### Evaluateing the metrics
 
 ```{r}
@@ -313,21 +333,15 @@ df_dt4 %<>%
   mutate(class=seq(1:3),
         model="DT with cost")
 
+rf_dt <- as.tibble(rf_cm[["byClass"]][,c('F1',"Recall","Precision")])
+rf_dt %<>% 
+  mutate(class=seq(1:3),
+        model="Random Forest")
 
-findalMetric <- rbind(df_knn,df_dt2,df_dt4)
+
+findalMetric <- rbind(df_knn,df_dt2,df_dt4,rf_dt)
 
 findalMetric 
-```
-
-
-### Random Forests
-```{r}
-
-# rf1<-randomForest(fhd_n[train_set,22]~.,data=fhd_n[train_set,-22])
-# rf_pred1<-predict(rf1,fhd_test)
-# cm8<-confusionMatrix(rf_pred1,reference=test_label)
-# cm8[["byClass"]][,c('F1',"Recall","Precision","Balanced Accuracy")]
-
 ```
 
 ### PCA
