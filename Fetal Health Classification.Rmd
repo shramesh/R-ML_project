@@ -194,12 +194,6 @@ test1 <- as.data.frame(lapply(test, normalize))
 
 
 
-
-
-
-
-
-
 ### KNN Model
 ```{r}
 knn_pred1 <- knn(train = train1, test = test1,
